@@ -37,7 +37,7 @@ A lightweight [Model Context Protocol (MCP)](https://modelcontextprotocol.io) se
 
 ### Write
 
-1. **updateFileContent**
+1. **writeFile**
    - Updates the content of a specified file with new markdown content
    - Creates the file (and any parent directories) if it doesn't exist
    - Replaces the entire file content
