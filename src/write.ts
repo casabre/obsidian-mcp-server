@@ -1,25 +1,31 @@
 import { RequestHandlerExtra } from "@modelcontextprotocol/sdk/shared/protocol.js";
-import { tool } from "./types.js";
-import { toErrorMessage } from "./utils.js";
-import fs from "fs";
+import { tool, ToolResult } from "./types.js";
+import { toErrorMessage, pathExists } from "./utils.js";
+import { promises as fsp } from "fs";
 import path from "path";
 import { z } from "zod";
 
-export function writeFile(vaultPath: string, filePath: string, content: string): boolean {
+export async function writeFile(
+  vaultPath: string,
+  filePath: string,
+  content: string
+): Promise<boolean> {
   const fullPath = path.join(vaultPath, filePath);
-  const dirPath = path.dirname(fullPath);
-  if (!fs.existsSync(dirPath)) fs.mkdirSync(dirPath, { recursive: true });
-  const existed = fs.existsSync(fullPath);
-  fs.writeFileSync(fullPath, content, "utf8");
+  await fsp.mkdir(path.dirname(fullPath), { recursive: true });
+  const existed = await pathExists(fullPath);
+  await fsp.writeFile(fullPath, content, "utf8");
   return existed;
 }
 
-export function appendFile(vaultPath: string, filePath: string, content: string): boolean {
+export async function appendFile(
+  vaultPath: string,
+  filePath: string,
+  content: string
+): Promise<boolean> {
   const fullPath = path.join(vaultPath, filePath);
-  const dirPath = path.dirname(fullPath);
-  if (!fs.existsSync(dirPath)) fs.mkdirSync(dirPath, { recursive: true });
-  const existed = fs.existsSync(fullPath);
-  fs.appendFileSync(fullPath, content, "utf8");
+  await fsp.mkdir(path.dirname(fullPath), { recursive: true });
+  const existed = await pathExists(fullPath);
+  await fsp.appendFile(fullPath, content, "utf8");
   return existed;
 }
 
@@ -35,9 +41,9 @@ export function createWriteTools(vaultPath: string): tool<any>[] {
       filePath: z.string().describe("File path relative to the vault root"),
       content: z.string().describe("Markdown content to write to the file"),
     },
-    handler: (args, _extra: RequestHandlerExtra<any, any>) => {
+    handler: async (args, _extra: RequestHandlerExtra<any, any>): Promise<ToolResult> => {
       try {
-        const existed = writeFile(vaultPath, args.filePath, args.content);
+        const existed = await writeFile(vaultPath, args.filePath, args.content);
         return {
           content: [
             {
@@ -50,12 +56,7 @@ export function createWriteTools(vaultPath: string): tool<any>[] {
         };
       } catch (error) {
         return {
-          content: [
-            {
-              type: "text",
-              text: `Error updating file: ${toErrorMessage(error)}`,
-            },
-          ],
+          content: [{ type: "text", text: `Error updating file: ${toErrorMessage(error)}` }],
         };
       }
     },
@@ -72,9 +73,9 @@ export function createWriteTools(vaultPath: string): tool<any>[] {
       filePath: z.string().describe("File path relative to the vault root"),
       content: z.string().describe("Markdown content to append to the file"),
     },
-    handler: (args, _extra: RequestHandlerExtra<any, any>) => {
+    handler: async (args, _extra: RequestHandlerExtra<any, any>): Promise<ToolResult> => {
       try {
-        const existed = appendFile(vaultPath, args.filePath, args.content);
+        const existed = await appendFile(vaultPath, args.filePath, args.content);
         return {
           content: [
             {
@@ -87,12 +88,7 @@ export function createWriteTools(vaultPath: string): tool<any>[] {
         };
       } catch (error) {
         return {
-          content: [
-            {
-              type: "text",
-              text: `Error appending to file: ${toErrorMessage(error)}`,
-            },
-          ],
+          content: [{ type: "text", text: `Error appending to file: ${toErrorMessage(error)}` }],
         };
       }
     },

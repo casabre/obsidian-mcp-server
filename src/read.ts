@@ -1,70 +1,83 @@
 import { RequestHandlerExtra } from "@modelcontextprotocol/sdk/shared/protocol.js";
-import { tool } from "./types.js";
-import fs from "fs";
+import { tool, ToolResult } from "./types.js";
+import { promises as fsp } from "fs";
 import path from "path";
 import { z } from "zod";
 import { glob } from "glob";
 
-export function getAllFilenames(dirPath: string): string[] {
-  const files = glob.sync("**/*", { cwd: dirPath, nodir: true, dot: false });
-  return files
-    .map((file: string) => ({
-      path: file,
-      mtime: fs.statSync(path.join(dirPath, file)).mtime,
-    }))
-    .sort(
-      (a: { mtime: Date }, b: { mtime: Date }) =>
-        b.mtime.getTime() - a.mtime.getTime()
+export async function getAllFilenames(dirPath: string): Promise<string[]> {
+  const files = await glob("**/*", { cwd: dirPath, nodir: true, dot: false });
+  const withStats = (
+    await Promise.all(
+      files.map(async (file) => {
+        try {
+          return { path: file, mtime: (await fsp.stat(path.join(dirPath, file))).mtime };
+        } catch {
+          /* v8 ignore next */
+          return null; // file removed between glob and stat
+        }
+      })
     )
-    .map((file: { path: string }) => file.path);
+  ).filter((f): f is { path: string; mtime: Date } => f !== null);
+  return withStats
+    .sort((a, b) => b.mtime.getTime() - a.mtime.getTime())
+    .map((f) => f.path);
 }
 
-export function readFilesByName(
+export async function readFilesByName(
   rootPath: string,
   targetFilenames: string[]
-): string[] {
-  const allFiles = getAllFilenames(rootPath);
+): Promise<string[]> {
+  const allFiles = await getAllFilenames(rootPath);
   const fileMap = new Map<string, string>();
   allFiles.forEach((file) => fileMap.set(file.toLowerCase(), file));
 
-  const readAndFormat = (filePath: string): string => {
-    const content = fs.readFileSync(path.join(rootPath, filePath), "utf8");
-    return `# File: ${filePath}\n\n${content}`;
+  const readAndFormat = async (filePath: string): Promise<string> => {
+    try {
+      const content = await fsp.readFile(path.join(rootPath, filePath), "utf8");
+      return `# File: ${filePath}\n\n${content}`;
+    } catch {
+      return `# File: ${filePath}\n\nFile not found in vault.`;
+    }
   };
 
-  return targetFilenames.flatMap((targetName) => {
-    if (allFiles.includes(targetName)) return [readAndFormat(targetName)];
+  const results = await Promise.all(
+    targetFilenames.map(async (targetName) => {
+      if (allFiles.includes(targetName)) return [await readAndFormat(targetName)];
 
-    const lower = targetName.toLowerCase();
-    if (fileMap.has(lower)) return [readAndFormat(fileMap.get(lower)!)];
+      const lower = targetName.toLowerCase();
+      if (fileMap.has(lower)) return [await readAndFormat(fileMap.get(lower)!)];
 
-    const partial = allFiles.filter((f) =>
-      path.basename(f).toLowerCase().includes(lower)
-    );
-    if (partial.length > 0) return partial.map(readAndFormat);
+      const partial = allFiles.filter((f) =>
+        path.basename(f).toLowerCase().includes(lower)
+      );
+      if (partial.length > 0) return Promise.all(partial.map(readAndFormat));
 
-    return [`# File: ${targetName}\n\nFile not found in vault.`];
-  });
+      return [`# File: ${targetName}\n\nFile not found in vault.`];
+    })
+  );
+
+  return results.flat();
 }
 
-export function findOpenTodos(rootPath: string): string[] {
-  const mdFiles = glob.sync("**/*.md", {
-    cwd: rootPath,
-    nodir: true,
-    dot: false,
-  });
-  const todos: string[] = [];
+export async function findOpenTodos(rootPath: string): Promise<string[]> {
+  const mdFiles = await glob("**/*.md", { cwd: rootPath, nodir: true, dot: false });
 
-  mdFiles.forEach((filePath) => {
-    const content = fs.readFileSync(path.join(rootPath, filePath), "utf8");
-    content.split("\n").forEach((line) => {
-      if (/- \[ \] .+/.test(line)) {
-        todos.push(`- **${filePath}**: ${line.trim()}`);
+  const perFile = await Promise.all(
+    mdFiles.map(async (filePath) => {
+      try {
+        const content = await fsp.readFile(path.join(rootPath, filePath), "utf8");
+        return content
+          .split("\n")
+          .filter((line) => /- \[ \] .+/.test(line))
+          .map((line) => `- **${filePath}**: ${line.trim()}`);
+      } catch {
+        return []; // file removed or unreadable between glob and read
       }
-    });
-  });
+    })
+  );
 
-  return todos;
+  return perFile.flat();
 }
 
 export function createReadTools(vaultPath: string): tool<any>[] {
@@ -73,8 +86,8 @@ export function createReadTools(vaultPath: string): tool<any>[] {
     description:
       "Get a list of all filenames in the Obsidian vault. Useful for retrieving their contents later.",
     schema: {},
-    handler: (_args, _extra: RequestHandlerExtra<any, any>) => {
-      const filenames = getAllFilenames(vaultPath);
+    handler: async (_args, _extra: RequestHandlerExtra<any, any>): Promise<ToolResult> => {
+      const filenames = await getAllFilenames(vaultPath);
       return {
         content: [
           {
@@ -93,12 +106,10 @@ export function createReadTools(vaultPath: string): tool<any>[] {
     description:
       "Retrieves the contents of specified files from the Obsidian vault. You can provide exact filenames (with or without path), partial filenames, or case-insensitive matches. Each file's content is prefixed with '# File: filename'.",
     schema: { filenames: z.array(z.string()) },
-    handler: (args, _extra: RequestHandlerExtra<any, any>) => {
-      const results = readFilesByName(vaultPath, args.filenames);
+    handler: async (args, _extra: RequestHandlerExtra<any, any>): Promise<ToolResult> => {
+      const results = await readFilesByName(vaultPath, args.filenames);
       if (results.length === 0) {
-        return {
-          content: [{ type: "text", text: "No matching files found in the vault." }],
-        };
+        return { content: [{ type: "text", text: "No matching files found in the vault." }] };
       }
       return { content: [{ type: "text", text: results.join("\n\n") }] };
     },
@@ -109,12 +120,10 @@ export function createReadTools(vaultPath: string): tool<any>[] {
     description:
       "Retrieves all open TODO items in the Obsidian vault with their file locations. Useful for getting an overview of pending tasks.",
     schema: {},
-    handler: (_args, _extra: RequestHandlerExtra<any, any>) => {
-      const todos = findOpenTodos(vaultPath);
+    handler: async (_args, _extra: RequestHandlerExtra<any, any>): Promise<ToolResult> => {
+      const todos = await findOpenTodos(vaultPath);
       if (todos.length === 0) {
-        return {
-          content: [{ type: "text", text: "No open TODOs found in the vault." }],
-        };
+        return { content: [{ type: "text", text: "No open TODOs found in the vault." }] };
       }
       return {
         content: [

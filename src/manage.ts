@@ -1,39 +1,37 @@
 import { RequestHandlerExtra } from "@modelcontextprotocol/sdk/shared/protocol.js";
-import { tool } from "./types.js";
-import { toErrorMessage } from "./utils.js";
-import fs from "fs";
+import { tool, ToolResult } from "./types.js";
+import { toErrorMessage, isEnoent } from "./utils.js";
+import { promises as fsp } from "fs";
 import path from "path";
 import { z } from "zod";
 
-export function moveFile(
+export async function moveFile(
   vaultPath: string,
   sourcePath: string,
   destinationPath: string
-): void {
+): Promise<void> {
   const fullSource = path.join(vaultPath, sourcePath);
   const fullDest = path.join(vaultPath, destinationPath);
-
-  if (!fs.existsSync(fullSource)) {
-    throw new Error(`Source file not found: ${sourcePath}`);
+  await fsp.mkdir(path.dirname(fullDest), { recursive: true });
+  try {
+    await fsp.rename(fullSource, fullDest);
+  } catch (error) {
+    if (isEnoent(error)) throw new Error(`Source file not found: ${sourcePath}`);
+    throw error;
   }
-
-  const destDir = path.dirname(fullDest);
-  if (!fs.existsSync(destDir)) fs.mkdirSync(destDir, { recursive: true });
-
-  fs.renameSync(fullSource, fullDest);
 }
 
-export function deleteFile(vaultPath: string, filePath: string): void {
+export async function deleteFile(vaultPath: string, filePath: string): Promise<void> {
   if (!filePath.endsWith(".md")) {
     throw new Error(`Only .md files can be deleted, got: ${filePath}`);
   }
-
   const fullPath = path.join(vaultPath, filePath);
-  if (!fs.existsSync(fullPath)) {
-    throw new Error(`File not found: ${filePath}`);
+  try {
+    await fsp.unlink(fullPath);
+  } catch (error) {
+    if (isEnoent(error)) throw new Error(`File not found: ${filePath}`);
+    throw error;
   }
-
-  fs.unlinkSync(fullPath);
 }
 
 export function createManageTools(vaultPath: string): tool<any>[] {
@@ -46,29 +44,19 @@ export function createManageTools(vaultPath: string): tool<any>[] {
       "Moves or renames a file within the Obsidian vault. Creates destination directories if they don't exist.",
     schema: {
       sourcePath: z.string().describe("Current file path relative to vault root"),
-      destinationPath: z
-        .string()
-        .describe("New file path relative to vault root"),
+      destinationPath: z.string().describe("New file path relative to vault root"),
     },
-    handler: (args, _extra: RequestHandlerExtra<any, any>) => {
+    handler: async (args, _extra: RequestHandlerExtra<any, any>): Promise<ToolResult> => {
       try {
-        moveFile(vaultPath, args.sourcePath, args.destinationPath);
+        await moveFile(vaultPath, args.sourcePath, args.destinationPath);
         return {
           content: [
-            {
-              type: "text",
-              text: `Successfully moved: ${args.sourcePath} → ${args.destinationPath}`,
-            },
+            { type: "text", text: `Successfully moved: ${args.sourcePath} → ${args.destinationPath}` },
           ],
         };
       } catch (error) {
         return {
-          content: [
-            {
-              type: "text",
-              text: `Error moving file: ${toErrorMessage(error)}`,
-            },
-          ],
+          content: [{ type: "text", text: `Error moving file: ${toErrorMessage(error)}` }],
         };
       }
     },
@@ -79,27 +67,20 @@ export function createManageTools(vaultPath: string): tool<any>[] {
     description:
       "Permanently deletes a markdown file from the Obsidian vault. Only .md files can be deleted as a safety guard. Provide a file path ending in .md.",
     schema: {
-      filePath: z.string().regex(/\.md$/).describe("File path relative to vault root (must end in .md)"),
+      filePath: z
+        .string()
+        .regex(/\.md$/)
+        .describe("File path relative to vault root (must end in .md)"),
     },
-    handler: (args, _extra: RequestHandlerExtra<any, any>) => {
+    handler: async (args, _extra: RequestHandlerExtra<any, any>): Promise<ToolResult> => {
       try {
-        deleteFile(vaultPath, args.filePath);
+        await deleteFile(vaultPath, args.filePath);
         return {
-          content: [
-            {
-              type: "text",
-              text: `Successfully deleted: ${args.filePath}`,
-            },
-          ],
+          content: [{ type: "text", text: `Successfully deleted: ${args.filePath}` }],
         };
       } catch (error) {
         return {
-          content: [
-            {
-              type: "text",
-              text: `Error deleting file: ${toErrorMessage(error)}`,
-            },
-          ],
+          content: [{ type: "text", text: `Error deleting file: ${toErrorMessage(error)}` }],
         };
       }
     },
