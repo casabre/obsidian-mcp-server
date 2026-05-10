@@ -25,41 +25,60 @@ afterEach(() => {
 });
 
 describe("moveFile", () => {
-  it("moves a file to a new path", () => {
+  it("moves a file to a new path", async () => {
     write("source.md", "content");
-    moveFile(tmpDir, "source.md", "dest.md");
+    await moveFile(tmpDir, "source.md", "dest.md");
     expect(exists("source.md")).toBe(false);
     expect(exists("dest.md")).toBe(true);
   });
 
-  it("creates destination directories if missing", () => {
+  it("creates destination directories if missing", async () => {
     write("note.md", "content");
-    moveFile(tmpDir, "note.md", "folder/sub/note.md");
+    await moveFile(tmpDir, "note.md", "folder/sub/note.md");
     expect(exists("folder/sub/note.md")).toBe(true);
   });
 
-  it("throws when source file does not exist", () => {
-    expect(() => moveFile(tmpDir, "ghost.md", "dest.md")).toThrow(
+  it("throws when source file does not exist", async () => {
+    await expect(moveFile(tmpDir, "ghost.md", "dest.md")).rejects.toThrow(
       "Source file not found"
     );
+  });
+
+  it("re-throws non-ENOENT error from rename", async () => {
+    write("source.md", "content");
+    // renaming a file onto an existing directory produces EISDIR, not ENOENT
+    fs.mkdirSync(path.join(tmpDir, "dest-dir"));
+    const err: NodeJS.ErrnoException = await moveFile(tmpDir, "source.md", "dest-dir").catch(
+      (e) => e
+    );
+    expect(err.code).not.toBe("ENOENT");
+    expect(err.message).not.toContain("Source file not found");
   });
 });
 
 describe("deleteFile", () => {
-  it("deletes an existing .md file", () => {
+  it("deletes an existing .md file", async () => {
     write("note.md");
-    deleteFile(tmpDir, "note.md");
+    await deleteFile(tmpDir, "note.md");
     expect(exists("note.md")).toBe(false);
   });
 
-  it("throws when file does not exist", () => {
-    expect(() => deleteFile(tmpDir, "ghost.md")).toThrow("File not found");
+  it("throws when file does not exist", async () => {
+    await expect(deleteFile(tmpDir, "ghost.md")).rejects.toThrow("File not found");
   });
 
-  it("throws for non-.md files", () => {
-    expect(() => deleteFile(tmpDir, "image.png")).toThrow(
+  it("throws for non-.md files", async () => {
+    await expect(deleteFile(tmpDir, "image.png")).rejects.toThrow(
       "Only .md files can be deleted"
     );
+  });
+
+  it("re-throws non-ENOENT error from unlink", async () => {
+    // unlinking a directory produces EPERM/EISDIR, not ENOENT
+    fs.mkdirSync(path.join(tmpDir, "subdir.md"));
+    const err: NodeJS.ErrnoException = await deleteFile(tmpDir, "subdir.md").catch((e) => e);
+    expect(err.code).not.toBe("ENOENT");
+    expect(err.message).not.toContain("File not found");
   });
 });
 
@@ -71,38 +90,38 @@ describe("createManageTools", () => {
   });
 
   describe("moveFile handler", () => {
-    it("returns success message on move", () => {
+    it("returns success message on move", async () => {
       write("a.md", "content");
       const tool = createManageTools(tmpDir).find((t) => t.name === "moveFile")!;
-      const result = tool.handler({ sourcePath: "a.md", destinationPath: "b.md" }, {} as any);
+      const result = await tool.handler({ sourcePath: "a.md", destinationPath: "b.md" }, {} as any);
       expect(result.content[0].text).toContain("Successfully moved");
       expect(result.content[0].text).toContain("a.md → b.md");
     });
 
-    it("returns error message when source missing", () => {
+    it("returns error message when source missing", async () => {
       const tool = createManageTools(tmpDir).find((t) => t.name === "moveFile")!;
-      const result = tool.handler({ sourcePath: "ghost.md", destinationPath: "b.md" }, {} as any);
+      const result = await tool.handler({ sourcePath: "ghost.md", destinationPath: "b.md" }, {} as any);
       expect(result.content[0].text).toContain("Error moving file");
     });
   });
 
   describe("deleteFile handler", () => {
-    it("returns success message on delete", () => {
+    it("returns success message on delete", async () => {
       write("note.md");
       const tool = createManageTools(tmpDir).find((t) => t.name === "deleteFile")!;
-      const result = tool.handler({ filePath: "note.md" }, {} as any);
+      const result = await tool.handler({ filePath: "note.md" }, {} as any);
       expect(result.content[0].text).toContain("Successfully deleted");
     });
 
-    it("returns error message when file missing", () => {
+    it("returns error message when file missing", async () => {
       const tool = createManageTools(tmpDir).find((t) => t.name === "deleteFile")!;
-      const result = tool.handler({ filePath: "ghost.md" }, {} as any);
+      const result = await tool.handler({ filePath: "ghost.md" }, {} as any);
       expect(result.content[0].text).toContain("Error deleting file");
     });
 
-    it("returns error message for non-.md file", () => {
+    it("returns error message for non-.md file", async () => {
       const tool = createManageTools(tmpDir).find((t) => t.name === "deleteFile")!;
-      const result = tool.handler({ filePath: "image.png" }, {} as any);
+      const result = await tool.handler({ filePath: "image.png" }, {} as any);
       expect(result.content[0].text).toContain("Error deleting file");
     });
   });

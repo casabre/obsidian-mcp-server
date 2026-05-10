@@ -21,30 +21,30 @@ afterEach(() => {
 });
 
 describe("getAllFilenames", () => {
-  it("returns empty array for empty vault", () => {
-    expect(getAllFilenames(tmpDir)).toEqual([]);
+  it("returns empty array for empty vault", async () => {
+    expect(await getAllFilenames(tmpDir)).toEqual([]);
   });
 
-  it("returns filenames sorted by modification time, newest first", () => {
+  it("returns filenames sorted by modification time, newest first", async () => {
     write("old.md", "old");
     write("new.md", "new");
     const past = new Date(Date.now() - 10000);
     fs.utimesSync(path.join(tmpDir, "old.md"), past, past);
-    const files = getAllFilenames(tmpDir);
+    const files = await getAllFilenames(tmpDir);
     expect(files[0]).toBe("new.md");
     expect(files[1]).toBe("old.md");
   });
 
-  it("includes files in subdirectories", () => {
+  it("includes files in subdirectories", async () => {
     write("folder/note.md", "content");
-    const files = getAllFilenames(tmpDir);
+    const files = await getAllFilenames(tmpDir);
     expect(files).toContain("folder/note.md");
   });
 
-  it("excludes dot files and directories", () => {
+  it("excludes dot files and directories", async () => {
     write(".obsidian/config.json", "{}");
     write("visible.md", "content");
-    const files = getAllFilenames(tmpDir);
+    const files = await getAllFilenames(tmpDir);
     expect(files).not.toContain(".obsidian/config.json");
     expect(files).toContain("visible.md");
   });
@@ -56,63 +56,79 @@ describe("readFilesByName", () => {
     write("daily.md", "daily content");
   });
 
-  it("finds file by exact path", () => {
-    const result = readFilesByName(tmpDir, ["Notes/Project.md"]);
+  it("finds file by exact path", async () => {
+    const result = await readFilesByName(tmpDir, ["Notes/Project.md"]);
     expect(result[0]).toContain("project content");
   });
 
-  it("finds file by case-insensitive exact name", () => {
-    const result = readFilesByName(tmpDir, ["notes/project.md"]);
+  it("finds file by case-insensitive exact name", async () => {
+    const result = await readFilesByName(tmpDir, ["notes/project.md"]);
     expect(result[0]).toContain("project content");
   });
 
-  it("finds file by partial filename match", () => {
-    const result = readFilesByName(tmpDir, ["proj"]);
+  it("finds file by partial filename match", async () => {
+    const result = await readFilesByName(tmpDir, ["proj"]);
     expect(result[0]).toContain("project content");
   });
 
-  it("returns not-found message when no match", () => {
-    const result = readFilesByName(tmpDir, ["nonexistent"]);
+  it("returns not-found message when no match", async () => {
+    const result = await readFilesByName(tmpDir, ["nonexistent"]);
     expect(result[0]).toContain("File not found in vault.");
   });
 
-  it("returns multiple files matching a partial name", () => {
+  it("returns multiple files matching a partial name", async () => {
     write("project-a.md", "a");
     write("project-b.md", "b");
-    const result = readFilesByName(tmpDir, ["project-"]);
+    const result = await readFilesByName(tmpDir, ["project-"]);
     expect(result.length).toBeGreaterThanOrEqual(2);
   });
 
-  it("prefixes each result with file header", () => {
-    const result = readFilesByName(tmpDir, ["daily.md"]);
+  it("prefixes each result with file header", async () => {
+    const result = await readFilesByName(tmpDir, ["daily.md"]);
     expect(result[0]).toMatch(/^# File: daily\.md/);
+  });
+
+  it("returns not-found message when file becomes unreadable after glob", async () => {
+    if (process.getuid?.() === 0) return;
+    write("locked.md", "secret content");
+    fs.chmodSync(path.join(tmpDir, "locked.md"), 0o000);
+    const result = await readFilesByName(tmpDir, ["locked.md"]);
+    expect(result[0]).toContain("File not found in vault.");
   });
 });
 
 describe("findOpenTodos", () => {
-  it("returns empty array when no todos exist", () => {
+  it("returns empty array when no todos exist", async () => {
     write("note.md", "# Heading\nsome text");
-    expect(findOpenTodos(tmpDir)).toEqual([]);
+    expect(await findOpenTodos(tmpDir)).toEqual([]);
   });
 
-  it("returns open todo items with file location", () => {
+  it("returns open todo items with file location", async () => {
     write("tasks.md", "- [ ] buy milk\n- [x] done task");
-    const todos = findOpenTodos(tmpDir);
+    const todos = await findOpenTodos(tmpDir);
     expect(todos).toHaveLength(1);
     expect(todos[0]).toContain("buy milk");
     expect(todos[0]).toContain("tasks.md");
   });
 
-  it("ignores completed todos", () => {
+  it("ignores completed todos", async () => {
     write("tasks.md", "- [x] already done");
-    expect(findOpenTodos(tmpDir)).toEqual([]);
+    expect(await findOpenTodos(tmpDir)).toEqual([]);
   });
 
-  it("collects todos across multiple files", () => {
+  it("collects todos across multiple files", async () => {
     write("a.md", "- [ ] task a");
     write("b.md", "- [ ] task b");
-    const todos = findOpenTodos(tmpDir);
+    const todos = await findOpenTodos(tmpDir);
     expect(todos).toHaveLength(2);
+  });
+
+  it("skips unreadable files gracefully", async () => {
+    if (process.getuid?.() === 0) return;
+    write("locked.md", "- [ ] hidden todo");
+    fs.chmodSync(path.join(tmpDir, "locked.md"), 0o000);
+    const todos = await findOpenTodos(tmpDir);
+    expect(todos).toEqual([]);
   });
 });
 
@@ -127,42 +143,42 @@ describe("createReadTools", () => {
     ]);
   });
 
-  it("getAllFilenames handler returns filenames text", () => {
+  it("getAllFilenames handler returns filenames text", async () => {
     write("note.md", "hello");
     const tool = createReadTools(tmpDir).find((t) => t.name === "getAllFilenames")!;
-    const result = tool.handler({}, {} as any);
+    const result = await tool.handler({}, {} as any);
     expect(result.content[0].text).toContain("note.md");
   });
 
-  it("readMultipleFiles handler returns no-match message for empty filenames array", () => {
+  it("readMultipleFiles handler returns no-match message for empty filenames array", async () => {
     const tool = createReadTools(tmpDir).find((t) => t.name === "readMultipleFiles")!;
-    const result = tool.handler({ filenames: [] }, {} as any);
+    const result = await tool.handler({ filenames: [] }, {} as any);
     expect(result.content[0].text).toBe("No matching files found in the vault.");
   });
 
-  it("readMultipleFiles handler returns not-found message for unknown file", () => {
+  it("readMultipleFiles handler returns not-found message for unknown file", async () => {
     const tool = createReadTools(tmpDir).find((t) => t.name === "readMultipleFiles")!;
-    const result = tool.handler({ filenames: ["ghost.md"] }, {} as any);
+    const result = await tool.handler({ filenames: ["ghost.md"] }, {} as any);
     expect(result.content[0].text).toContain("File not found");
   });
 
-  it("readMultipleFiles handler returns file contents", () => {
+  it("readMultipleFiles handler returns file contents", async () => {
     write("note.md", "hello world");
     const tool = createReadTools(tmpDir).find((t) => t.name === "readMultipleFiles")!;
-    const result = tool.handler({ filenames: ["note.md"] }, {} as any);
+    const result = await tool.handler({ filenames: ["note.md"] }, {} as any);
     expect(result.content[0].text).toContain("hello world");
   });
 
-  it("getOpenTodos handler returns no-todos message when vault is empty", () => {
+  it("getOpenTodos handler returns no-todos message when vault is empty", async () => {
     const tool = createReadTools(tmpDir).find((t) => t.name === "getOpenTodos")!;
-    const result = tool.handler({}, {} as any);
+    const result = await tool.handler({}, {} as any);
     expect(result.content[0].text).toBe("No open TODOs found in the vault.");
   });
 
-  it("getOpenTodos handler returns todos when present", () => {
+  it("getOpenTodos handler returns todos when present", async () => {
     write("tasks.md", "- [ ] fix bug");
     const tool = createReadTools(tmpDir).find((t) => t.name === "getOpenTodos")!;
-    const result = tool.handler({}, {} as any);
+    const result = await tool.handler({}, {} as any);
     expect(result.content[0].text).toContain("fix bug");
   });
 });
