@@ -2,7 +2,13 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import fs from "fs";
 import os from "os";
 import path from "path";
-import { validateVaultPath, toErrorMessage, pathExists, isEnoent } from "../utils.js";
+import {
+  validateVaultPath,
+  toErrorMessage,
+  pathExists,
+  isEnoent,
+  resolveWithinVault,
+} from "../utils.js";
 
 let tmpDir: string;
 
@@ -25,6 +31,34 @@ describe("validateVaultPath", () => {
 
   it("returns the path when it exists", () => {
     expect(validateVaultPath(tmpDir)).toBe(tmpDir);
+  });
+});
+
+describe("resolveWithinVault", () => {
+  it("resolves a normal file inside the vault", () => {
+    expect(resolveWithinVault(tmpDir, "note.md")).toBe(path.join(tmpDir, "note.md"));
+  });
+
+  it("resolves a nested file inside the vault", () => {
+    expect(resolveWithinVault(tmpDir, "folder/sub/note.md")).toBe(
+      path.join(tmpDir, "folder/sub/note.md")
+    );
+  });
+
+  it("allows a path that resolves to the vault root itself", () => {
+    expect(resolveWithinVault(tmpDir, ".")).toBe(path.resolve(tmpDir));
+  });
+
+  it("throws when the path escapes the vault via traversal", () => {
+    expect(() => resolveWithinVault(tmpDir, "../../etc/passwd")).toThrow(
+      "Path escapes the vault"
+    );
+  });
+
+  it("throws when the path resolves next to the vault (prefix attack)", () => {
+    expect(() => resolveWithinVault(tmpDir, "../" + path.basename(tmpDir) + "-evil")).toThrow(
+      "Path escapes the vault"
+    );
   });
 });
 

@@ -67,9 +67,27 @@ describe("deleteFile", () => {
     await expect(deleteFile(tmpDir, "ghost.md")).rejects.toThrow("File not found");
   });
 
-  it("throws for non-.md files", async () => {
-    await expect(deleteFile(tmpDir, "image.png")).rejects.toThrow(
-      "Only .md files can be deleted"
+  it("deletes a common attachment file (image)", async () => {
+    write("image.png");
+    await deleteFile(tmpDir, "image.png");
+    expect(exists("image.png")).toBe(false);
+  });
+
+  it("deletes an extension-less file", async () => {
+    write("_Strava");
+    await deleteFile(tmpDir, "_Strava");
+    expect(exists("_Strava")).toBe(false);
+  });
+
+  it("throws for disallowed file types", async () => {
+    await expect(deleteFile(tmpDir, "archive.tar.gz")).rejects.toThrow(
+      "File type not allowed for deletion"
+    );
+  });
+
+  it("refuses to delete a path that escapes the vault", async () => {
+    await expect(deleteFile(tmpDir, "../../etc/passwd")).rejects.toThrow(
+      "Path escapes the vault"
     );
   });
 
