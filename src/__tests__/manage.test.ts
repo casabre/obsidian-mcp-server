@@ -54,6 +54,19 @@ describe("moveFile", () => {
     expect(err.code).not.toBe("ENOENT");
     expect(err.message).not.toContain("Source file not found");
   });
+
+  it("refuses a source path that escapes the vault", async () => {
+    await expect(moveFile(tmpDir, "../../etc/passwd", "dest.md")).rejects.toThrow(
+      "Path escapes the vault"
+    );
+  });
+
+  it("refuses a destination path that escapes the vault", async () => {
+    write("source.md", "content");
+    await expect(moveFile(tmpDir, "source.md", "../../tmp/evil.md")).rejects.toThrow(
+      "Path escapes the vault"
+    );
+  });
 });
 
 describe("deleteFile", () => {

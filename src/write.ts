@@ -1,6 +1,6 @@
 import { RequestHandlerExtra } from "@modelcontextprotocol/sdk/shared/protocol.js";
 import { tool, ToolResult } from "./types.js";
-import { toErrorMessage, pathExists } from "./utils.js";
+import { toErrorMessage, pathExists, resolveWithinVault } from "./utils.js";
 import { promises as fsp } from "fs";
 import path from "path";
 import { z } from "zod";
@@ -10,7 +10,7 @@ export async function writeFile(
   filePath: string,
   content: string
 ): Promise<boolean> {
-  const fullPath = path.join(vaultPath, filePath);
+  const fullPath = resolveWithinVault(vaultPath, filePath);
   await fsp.mkdir(path.dirname(fullPath), { recursive: true });
   const existed = await pathExists(fullPath);
   await fsp.writeFile(fullPath, content, "utf8");
@@ -22,7 +22,7 @@ export async function appendFile(
   filePath: string,
   content: string
 ): Promise<boolean> {
-  const fullPath = path.join(vaultPath, filePath);
+  const fullPath = resolveWithinVault(vaultPath, filePath);
   await fsp.mkdir(path.dirname(fullPath), { recursive: true });
   const existed = await pathExists(fullPath);
   await fsp.appendFile(fullPath, content, "utf8");
