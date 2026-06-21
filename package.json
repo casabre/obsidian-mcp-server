@@ -9,6 +9,8 @@
   "scripts": {
     "test": "vitest run",
     "coverage": "vitest run --coverage",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
     "build": "tsc && node -e \"require('fs').chmodSync('build/index.js', '755')\""
   },
   "files": [
@@ -28,7 +30,9 @@
   "devDependencies": {
     "@types/node": "^22.13.8",
     "@vitest/coverage-v8": "^4.1.5",
+    "eslint": "^10.5.0",
     "typescript": "^5.8.2",
+    "typescript-eslint": "^8.61.1",
     "vitest": "^4.1.5"
   }
 }

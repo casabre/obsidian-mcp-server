@@ -81,7 +81,7 @@ export async function findOpenTodos(rootPath: string): Promise<string[]> {
 }
 
 export function createReadTools(vaultPath: string): tool<any>[] {
-  const getAllFilenamesTool: tool<{}> = {
+  const getAllFilenamesTool: tool<Record<string, never>> = {
     name: "getAllFilenames",
     description:
       "Get a list of all filenames in the Obsidian vault. Useful for retrieving their contents later.",
@@ -115,7 +115,7 @@ export function createReadTools(vaultPath: string): tool<any>[] {
     },
   };
 
-  const getOpenTodosTool: tool<{}> = {
+  const getOpenTodosTool: tool<Record<string, never>> = {
     name: "getOpenTodos",
     description:
       "Retrieves all open TODO items in the Obsidian vault with their file locations. Useful for getting an overview of pending tasks.",
