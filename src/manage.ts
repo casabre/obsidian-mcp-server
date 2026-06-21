@@ -10,8 +10,8 @@ export async function moveFile(
   sourcePath: string,
   destinationPath: string
 ): Promise<void> {
-  const fullSource = path.join(vaultPath, sourcePath);
-  const fullDest = path.join(vaultPath, destinationPath);
+  const fullSource = resolveWithinVault(vaultPath, sourcePath);
+  const fullDest = resolveWithinVault(vaultPath, destinationPath);
   await fsp.mkdir(path.dirname(fullDest), { recursive: true });
   try {
     await fsp.rename(fullSource, fullDest);

@@ -25,6 +25,12 @@ describe("writeFile", () => {
     expect(read("new.md")).toBe("hello");
   });
 
+  it("refuses a path that escapes the vault", async () => {
+    await expect(writeFile(tmpDir, "../../tmp/evil.md", "x")).rejects.toThrow(
+      "Path escapes the vault"
+    );
+  });
+
   it("overwrites an existing file and returns true (existed)", async () => {
     fs.writeFileSync(path.join(tmpDir, "existing.md"), "old content", "utf8");
     const existed = await writeFile(tmpDir, "existing.md", "new content");
@@ -55,6 +61,12 @@ describe("appendFile", () => {
   it("creates nested directories when appending to new nested path", async () => {
     await appendFile(tmpDir, "folder/note.md", "content");
     expect(read("folder/note.md")).toBe("content");
+  });
+
+  it("refuses a path that escapes the vault", async () => {
+    await expect(appendFile(tmpDir, "../../tmp/evil.md", "x")).rejects.toThrow(
+      "Path escapes the vault"
+    );
   });
 });
 
