@@ -33,18 +33,18 @@ export function resolveWithinVault(vaultPath: string, filePath: string): string 
   return fullPath;
 }
 
-export const validateVaultPath = (path: string | undefined): string => {
-  if (!path) {
+export const validateVaultPath = (vaultPath: string | undefined): string => {
+  if (!vaultPath) {
     throw new Error(
       "Vault path must be provided as a command line argument.\nUsage: <command> <vault_path>"
     );
   }
 
-  if (!existsSync(path)) {
+  if (!existsSync(vaultPath)) {
     throw new Error(
-      `Invalid vault path: "${path}"\nPlease provide a path to an existing Obsidian vault`
+      `Invalid vault path: "${vaultPath}"\nPlease provide a path to an existing Obsidian vault`
     );
   }
 
-  return path;
+  return vaultPath;
 };
