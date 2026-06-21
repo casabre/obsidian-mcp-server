@@ -1,6 +1,6 @@
 import { RequestHandlerExtra } from "@modelcontextprotocol/sdk/shared/protocol.js";
 import { tool, ToolResult } from "./types.js";
-import { toErrorMessage, isEnoent } from "./utils.js";
+import { toErrorMessage, isEnoent, resolveWithinVault } from "./utils.js";
 import { promises as fsp } from "fs";
 import path from "path";
 import { z } from "zod";
@@ -21,11 +21,17 @@ export async function moveFile(
   }
 }
 
+// Files permitted for deletion: markdown notes, common Obsidian vault
+// attachments (images, audio, video, PDF, canvas), and extension-less files
+// (e.g. "_Strava", "_Team"). Anything else is blocked as a safety guard.
+export const DELETABLE_FILE_PATTERN =
+  /(\.(md|markdown|png|jpe?g|gif|bmp|svg|webp|avif|pdf|mp3|m4a|wav|ogg|flac|3gp|mp4|mov|mkv|ogv|webm|canvas)$)|(^|[\\/])[^\\/.]+$/i;
+
 export async function deleteFile(vaultPath: string, filePath: string): Promise<void> {
-  if (!filePath.endsWith(".md")) {
-    throw new Error(`Only .md files can be deleted, got: ${filePath}`);
+  if (!DELETABLE_FILE_PATTERN.test(filePath)) {
+    throw new Error(`File type not allowed for deletion, got: ${filePath}`);
   }
-  const fullPath = path.join(vaultPath, filePath);
+  const fullPath = resolveWithinVault(vaultPath, filePath);
   try {
     await fsp.unlink(fullPath);
   } catch (error) {
@@ -65,12 +71,14 @@ export function createManageTools(vaultPath: string): tool<any>[] {
   const deleteFileTool: tool<{ filePath: z.ZodString }> = {
     name: "deleteFile",
     description:
-      "Permanently deletes a markdown file from the Obsidian vault. Only .md files can be deleted as a safety guard. Provide a file path ending in .md.",
+      "Permanently deletes a file from the Obsidian vault. Allows markdown notes (.md), common attachments (images, audio, video, PDF, canvas), and extension-less files. Other file types are blocked as a safety guard.",
     schema: {
       filePath: z
         .string()
-        .regex(/\.md$/)
-        .describe("File path relative to vault root (must end in .md)"),
+        .regex(DELETABLE_FILE_PATTERN)
+        .describe(
+          "File path relative to vault root. Allows .md notes, common attachments (images, audio, video, PDF, canvas), and extension-less files."
+        ),
     },
     handler: async (args, _extra: RequestHandlerExtra<any, any>): Promise<ToolResult> => {
       try {
